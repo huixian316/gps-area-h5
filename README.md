@@ -75,7 +75,7 @@ const BASEMAPS = {
 
 - 默认瓦片：[OpenStreetMap](https://www.openstreetmap.org) 公共瓦片服务，遵循[瓦片使用政策](https://operations.osmfoundation.org/policies/tiles/)——个人小流量使用没问题；禁止大规模抓取/高并发调用；页面已按要求显示 © OpenStreetMap 版权与归属。
 - 备选瓦片：CARTO Basemaps（同样基于 OSM 数据，免 Key，亦有公平使用限制）。
-- Leaflet 库（v1.9.4）来自 unpkg CDN，首次打开需联网；若需完全离线，可下载 Leaflet 放入本目录 `lib/` 并改用相对路径引用。
+- Leaflet 库（v1.9.4，BSD-2-Clause 许可）已**自托管**于本目录（`leaflet.css` / `leaflet.js`），除地图瓦片外页面无任何外部 CDN 依赖；瓦片不可达时自动降级并提示，测量与计算功能不受影响。
 
 ## 跨设备与数据隔离
 
