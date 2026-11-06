@@ -42,7 +42,7 @@ const BASEMAPS = {
     maxZoom: 19,
   },
 };
-const ACTIVE_BASEMAP = 'esri';
+const ACTIVE_BASEMAP = 'esriSat';   // 卫星影像：中国境内有详细数据，且适合对照实地地块边界
 // 瓦片加载失败时的自动降级链（国内外网络环境不同，失败即换下一家）
 const FALLBACK = { esri: 'osm', osm: 'esri', carto: 'esri', esriSat: 'esri', custom: 'osm' };
 
