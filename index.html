@@ -70,9 +70,10 @@
             <div class="f">φ₀ = φ₁ ，λ₀ = λ₁</div></li>
           <li><b>经纬度转弧度</b>：
             <div class="f">φ<sub>i</sub> = φ<sub>i</sub>(°)·π/180</div></li>
-          <li><b>局部平面投影（米）</b>：
-            <div class="f">x<sub>i</sub> = R·cos φ₀·(λ<sub>i</sub> − λ₀)</div>
-            <div class="f">y<sub>i</sub> = R·(φ<sub>i</sub> − φ₀)</div></li>
+          <li><b>局部平面投影（米，WGS84 椭球曲率半径）</b>：
+            <div class="f">x<sub>i</sub> = N(φ₀)·cos φ₀·(λ<sub>i</sub> − λ₀)</div>
+            <div class="f">y<sub>i</sub> = M(φ₀)·(φ<sub>i</sub> − φ₀)</div>
+            M/N 为参考点处子午线/卯酉圈曲率半径。</li>
           <li><b>格林公式离散形式</b>：
             <div class="f">A = ½ · | Σ<sub>i</sub> ( x<sub>i</sub>y<sub>i+1</sub> − x<sub>i+1</sub>y<sub>i</sub> ) |</div></li>
           <li><b>首尾闭合</b>：j = (i+1) mod n，末边自动连回首点。</li>
@@ -108,6 +109,6 @@
 <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-<script src="app.js" defer></script>
+<script src="app.js?v=2" defer></script>
 </body>
 </html>

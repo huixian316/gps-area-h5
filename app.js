@@ -36,8 +36,10 @@ const ACTIVE_BASEMAP = 'osm';
  * 核心面积计算（六步实现，供页面计算表与单元测试共用）
  * ============================================================ */
 // >>> AREA-CORE-START
-// WGS84 平均地球半径（米）。取平均半径而非长半轴，在局部近似中误差可忽略。
-const R_EARTH = 6371008.8;
+// WGS84 椭球参数（用参考点处的椭球曲率半径做局部投影，精度高于平均球体半径法）
+const WGS84_A  = 6378137.0;                 // 长半轴 a（米）
+const WGS84_E2 = 6.6943799901413165e-3;     // 第一偏心率平方 e²
+const R_EARTH  = 6371008.8;                 // 平均地球半径（米），仅用于 haversine 距离去重
 
 /**
  * 计算多边形面积。
@@ -60,15 +62,23 @@ function computeAreaDetail(pts) {
   const phi  = pts.map(p => p.lat * Math.PI / 180);  // 各顶点纬度（弧度）
   const lam  = pts.map(p => p.lon * Math.PI / 180);  // 各顶点经度（弧度）
 
-  /* ---------- 步骤 3：局部平面投影（单位：米） ----------
-   * x_i = R·cos(φ0)·(λ_i − λ0)  ：经度差 × 参考点纬度圈半径
-   * y_i = R·(φ_i − φ0)          ：纬度差 × 地球半径
-   * 在参考点附近把地球展平成平面；cos φ0 修正了“经度 1° 的实际长度
-   * 随纬度缩短”这一畸变，使坐标单位为真实的米。 */
+  /* ---------- 步骤 3：局部平面投影（单位：米，WGS84 椭球曲率半径） ----------
+   * M(φ0) = a·(1−e²) / (1−e²·sin²φ0)^{3/2}   —— 子午线曲率半径（南北方向）
+   * N(φ0) = a / (1−e²·sin²φ0)^{1/2}          —— 卯酉圈曲率半径（东西方向）
+   * x_i = N(φ0)·cos(φ0)·(λ_i − λ0) ：经度差 × 参考点纬度圈曲率半径
+   * y_i = M(φ0)·(φ_i − φ0)         ：纬度差 × 子午线曲率半径
+   * cos φ0 修正“经度 1° 实际长度随纬度缩短”的畸变；用椭球曲率半径替代平均
+   * 球体半径 R，可消除最高约 0.3% 的系统性尺度偏差（球体法即 M=N=R 的特例），
+   * 剩余误差仅为二阶小量 O((d/R)²)。 */
+  const sin2 = Math.sin(phi0) ** 2;
+  const w = 1 - WGS84_E2 * sin2;
+  const M = WGS84_A * (1 - WGS84_E2) / (w * Math.sqrt(w));   // 子午线曲率半径（米）
+  const N = WGS84_A / Math.sqrt(w);                          // 卯酉圈曲率半径（米）
   const cosPhi0 = Math.cos(phi0);
-  const kX = R_EARTH * cosPhi0;                     // 比例系数 R·cosφ0
+  const kX = N * cosPhi0;                           // 比例系数 N·cosφ0（东向）
+  const kY = M;                                     // 比例系数 M（北向）
   const x = lam.map(l => kX * (l - lam0));          // 东向坐标（米）
-  const y = phi.map(f => R_EARTH * (f - phi0));     // 北向坐标（米）
+  const y = phi.map(f => kY * (f - phi0));          // 北向坐标（米）
 
   /* ---------- 步骤 4 + 5：格林公式离散形式，并首尾闭合 ----------
    * A = ½ · | Σ_{i=0}^{n-1} ( x_i·y_{i+1} − x_{i+1}·y_i ) |
@@ -101,7 +111,7 @@ function computeAreaDetail(pts) {
     perimeter += Math.hypot(x[j] - x[i], y[j] - y[i]);
   }
 
-  return { n, lat0, lon0, phi0, lam0, cosPhi0, kX,
+  return { n, lat0, lon0, phi0, lam0, cosPhi0, kX, kY, M, N,
            x, y, terms, S, areaM2, areaHa, areaMu, areaKm2, perimeter };
 }
 // <<< AREA-CORE-END
@@ -281,7 +291,7 @@ function renderTable() {
     <div class="const-box cardbox">
       <b>步骤1 参考点</b>（取第 1 顶点）：φ₀ = ${points[0].lat.toFixed(7)}°，λ₀ = ${points[0].lon.toFixed(7)}°<br>
       <b>步骤2 弧度</b>：φ₀ = ${d.phi0.toFixed(7)} rad，λ₀ = ${d.lam0.toFixed(7)} rad<br>
-      <b>步骤3 系数</b>：cos φ₀ = ${d.cosPhi0.toFixed(6)}，R = 6 370 088.8 m，R·cos φ₀ = ${fmt(d.kX, 2)} m
+      <b>步骤3 系数</b>（WGS84 椭球曲率半径）：cos φ₀ = ${d.cosPhi0.toFixed(6)}，M = ${fmt(d.M, 2)} m，N = ${fmt(d.N, 2)} m，N·cos φ₀ = ${fmt(d.kX, 2)} m
     </div>
     <div class="muted" style="font-size:12px;margin:2px 2px 6px">
       逐项表：j = (i+1) mod n（首尾闭合），每行 = x<sub>i</sub>y<sub>j</sub> − x<sub>j</sub>y<sub>i</sub>，末行自动连回第 1 点
