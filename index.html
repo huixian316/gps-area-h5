@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b5c46">
+<meta name="description" content="纯静态 H5 GPS 测面积工具：WGS84 定位、局部投影 + 格林公式求面积、逐项计算表，数据仅存本设备。">
+<title>GPS 测面积 · H5</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<noscript><div style="padding:16px">本工具需要启用 JavaScript 才能运行。</div></noscript>
+
+<header>
+  <div class="brand">⬡ GPS 测面积<small>WGS84 · 纯前端</small></div>
+  <div class="badge" id="gpsBadge">定位未开启</div>
+</header>
+
+<div class="app">
+  <section class="left">
+    <div class="mapwrap">
+      <div id="map"></div>
+      <div class="chips">
+        <button class="chip" id="chipGps">◉ 定位</button>
+        <button class="chip" id="chipAuto">自动记录：关</button>
+        <button class="chip" id="chipManual">点图加点：关</button>
+      </div>
+    </div>
+
+    <section class="result">
+      <div class="result-main">
+        <span class="val" id="areaValue">—</span>
+        <select id="unitSel" title="主显示单位">
+          <option value="m2" selected>m²</option>
+          <option value="mu">亩</option>
+          <option value="ha">公顷</option>
+          <option value="km2">km²</option>
+        </select>
+      </div>
+      <div class="result-sub" id="areaSub">走一圈边界或点图放置 ≥3 个顶点后自动计算</div>
+      <div class="result-meta" id="areaMeta">顶点 0 · 周长 —</div>
+    </section>
+
+    <div class="actions">
+      <button class="act primary" id="btnAdd">＋ 记录GPS点</button>
+      <button class="act" id="btnUndo">撤销</button>
+      <button class="act danger" id="btnClear">清空</button>
+    </div>
+  </section>
+
+  <section class="side">
+    <nav class="tabbar">
+      <button class="tabbtn active" data-tab="table">计算表</button>
+      <button class="tabbtn" data-tab="formula">公式说明</button>
+      <button class="tabbtn" data-tab="history">历史记录</button>
+    </nav>
+    <div class="panes">
+      <div class="pane active" id="pane-table"></div>
+
+      <div class="pane" id="pane-formula">
+        <h3>为什么不能直接对经纬度套鞋带公式？</h3>
+        <p>经纬度是<b>角度</b>：同样 1° 经度差的实地长度随纬度按 cos φ 缩短。
+        直接把 (φ, λ) 当平面坐标求“面积”得到的是无物理意义的“平方度”，且随纬度严重畸变。
+        必须先经<b>局部投影</b>换算成米，再对平面坐标使用格林公式。</p>
+
+        <h3>六步计算流程</h3>
+        <ol class="steps">
+          <li><b>取参考点</b>：取第 1 个顶点为局部原点
+            <div class="f">φ₀ = φ₁ ，λ₀ = λ₁</div></li>
+          <li><b>经纬度转弧度</b>：
+            <div class="f">φ<sub>i</sub> = φ<sub>i</sub>(°)·π/180</div></li>
+          <li><b>局部平面投影（米）</b>：
+            <div class="f">x<sub>i</sub> = R·cos φ₀·(λ<sub>i</sub> − λ₀)</div>
+            <div class="f">y<sub>i</sub> = R·(φ<sub>i</sub> − φ₀)</div></li>
+          <li><b>格林公式离散形式</b>：
+            <div class="f">A = ½ · | Σ<sub>i</sub> ( x<sub>i</sub>y<sub>i+1</sub> − x<sub>i+1</sub>y<sub>i</sub> ) |</div></li>
+          <li><b>首尾闭合</b>：j = (i+1) mod n，末边自动连回首点。</li>
+          <li><b>单位换算</b>：1 公顷 = 10⁴ m²；1 亩 = 2000/3 m²；1 km² = 10⁶ m²。</li>
+        </ol>
+        <p>完整推导、手算可验的数值示例、反例与精度分析见独立文档
+          <a href="math.html">math.html · 数学说明</a>。</p>
+
+        <h3>使用提示</h3>
+        <ul class="muted">
+          <li>浏览器 Geolocation 仅在 <b>HTTPS</b> 下可用（本机调试环境除外），静态托管平台默认提供 HTTPS。</li>
+          <li>野外实测：站在角点处点「＋ 记录GPS点」绕边界一周；或打开「自动记录」沿边行走，每移动 ≥5 m 自动加点。</li>
+          <li>桌面端无 GPS 时，可打开「点图加点」在地图上手工放置顶点做演示。</li>
+          <li>坐标系：Geolocation 输出与 Leaflet API 均为 WGS84 经纬度；底图仅用于显示，不影响计算。</li>
+          <li>本工具纯静态、无后端：数据仅存于本设备浏览器 localStorage，不上传、不跨设备同步。</li>
+          <li>Leaflet 库与地图瓦片来自公共 CDN，首次打开需联网；离线时无底图，但计算功能可用。</li>
+        </ul>
+      </div>
+
+      <div class="pane" id="pane-history">
+        <div class="save-row">
+          <input id="nameInput" placeholder="地块名称（留空自动命名）" maxlength="40">
+          <button class="btn-primary" id="btnSave">保存当前</button>
+        </div>
+        <div class="hint">数据仅保存在<b>本设备</b>浏览器的 localStorage：不上传服务器、不在设备间同步。换一台设备打开看到的是空记录，这是正常现象；清除浏览器数据也会删除记录，重要结果请另行记录。</div>
+        <ul id="histList"></ul>
+        <button class="ghost" id="btnWipeHist">清空历史</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
