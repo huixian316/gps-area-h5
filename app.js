@@ -5,13 +5,25 @@
  * ============================================================ */
 
 /* ============================================================
- * 底图配置：默认 OpenStreetMap，无需任何 API Key，打开即用。
- * 更换底图（含带 Key 的商业瓦片）→ 见 README.md「更换底图」。
+ * 底图配置：默认 Esri 街道图（免 Key，Web 墨卡托与 WGS84 对齐无偏移，
+ * 国内外均可直连）。更换底图（含带 Key 的商业瓦片）→ 见 README.md。
  * 安全提示：若使用带 Key 的瓦片，不要把真实 Key 提交到公开仓库。
  * ============================================================ */
 const BASEMAPS = {
+  esri: {
+    name: 'Esri 街道图（默认，免 Key）',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri — Source: Esri, GEBCO, NOAA 及 GIS 社区',
+    maxZoom: 19,
+  },
+  esriSat: {
+    name: 'Esri 卫星影像（免 Key，适合看地块）',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics',
+    maxZoom: 19,
+  },
   osm: {
-    name: 'OpenStreetMap（默认，免 Key）',
+    name: 'OpenStreetMap（免 Key，国际备用）',
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 贡献者',
     maxZoom: 19,
@@ -30,7 +42,9 @@ const BASEMAPS = {
     maxZoom: 19,
   },
 };
-const ACTIVE_BASEMAP = 'osm';
+const ACTIVE_BASEMAP = 'esri';
+// 瓦片加载失败时的自动降级链（国内外网络环境不同，失败即换下一家）
+const FALLBACK = { esri: 'osm', osm: 'esri', carto: 'esri', esriSat: 'esri', custom: 'osm' };
 
 /* ============================================================
  * 核心面积计算（六步实现，供页面计算表与单元测试共用）
@@ -185,26 +199,44 @@ function initMap() {
     return false;
   }
   map = L.map('map');
-  let cfg = BASEMAPS[ACTIVE_BASEMAP] || BASEMAPS.osm;
-  if (!cfg.url) {                      // custom 槽位未填写时回退到 OSM
-    cfg = BASEMAPS.osm;
-    setTimeout(() => toast('自定义底图未配置 url，已回退到 OpenStreetMap'), 800);
+  let cfgKey = BASEMAPS[ACTIVE_BASEMAP] && BASEMAPS[ACTIVE_BASEMAP].url ? ACTIVE_BASEMAP : 'esri';
+  let cfg = BASEMAPS[cfgKey];
+  let tiles = null;
+
+  function useBasemap(key) {                     // 挂载（或切换）瓦片层
+    if (tiles) map.removeLayer(tiles);
+    cfg = BASEMAPS[key];
+    cfgKey = key;
+    tiles = L.tileLayer(cfg.url, {
+      maxZoom: cfg.maxZoom, attribution: cfg.attribution,
+      subdomains: cfg.subdomains || 'abc',
+    }).addTo(map);
+    tileErr = 0;
+    tiles.on('tileerror', onTileError);
   }
-  const tiles = L.tileLayer(cfg.url, {
-    maxZoom: cfg.maxZoom, attribution: cfg.attribution,
-    subdomains: cfg.subdomains || 'abc',
-  }).addTo(map);
-  // 瓦片加载失败提示：离线/网络受限时无底图，但测量功能不受影响
-  let tileErr = 0;
-  tiles.on('tileerror', () => {
-    if (++tileErr === 4 && !document.getElementById('tileNotice')) {
-      const n = document.createElement('div');
-      n.id = 'tileNotice';
-      n.className = 'tile-notice';
-      n.textContent = '底图瓦片加载失败（离线或网络受限）。无底图模式下测量与计算功能不受影响。';
-      map.getContainer().appendChild(n);
+
+  // 瓦片连续失败 → 自动切换到降级链上的下一家底图；全部失败则提示无底图模式
+  let tileErr = 0, switched = false;
+  function onTileError() {
+    if (++tileErr < 6 || switched) {
+      if (tileErr === 6 && !document.getElementById('tileNotice')) {
+        const n = document.createElement('div');
+        n.id = 'tileNotice';
+        n.className = 'tile-notice';
+        n.textContent = '底图瓦片加载失败（离线或网络受限）。无底图模式下测量与计算功能不受影响。';
+        map.getContainer().appendChild(n);
+      }
+      return;
     }
-  });
+    const next = FALLBACK[cfgKey];
+    if (next && BASEMAPS[next] && BASEMAPS[next].url) {
+      switched = true;
+      useBasemap(next);
+      toast('当前底图加载失败，已自动切换为「' + BASEMAPS[cfgKey].name + '」');
+    }
+  }
+
+  useBasemap(cfgKey);
   drawLayer = L.layerGroup().addTo(map);
   fixLayer  = L.layerGroup().addTo(map);
   map.setView([36.2, 105.5], 4);
